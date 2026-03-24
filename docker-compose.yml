@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  # ── CPU-режим (по умолчанию, работает везде включая Mac M1/M2) ──
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: image-moderation
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - CLIP_DEVICE=cpu
+    volumes:
+      - clip-cache:/app/.cache/clip
+      - easyocr-cache:/app/.cache/easyocr
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # ── GPU-режим (только Linux + NVIDIA GPU + nvidia-container-toolkit) ──
+  # Запуск: docker compose --profile gpu up --build
+  app-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+    container_name: image-moderation-gpu
+    restart: unless-stopped
+    profiles:
+      - gpu
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - CLIP_DEVICE=cuda
+    volumes:
+      - clip-cache:/app/.cache/clip
+      - easyocr-cache:/app/.cache/easyocr
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  clip-cache:
+  easyocr-cache:
